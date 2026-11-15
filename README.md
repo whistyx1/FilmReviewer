@@ -46,7 +46,7 @@ For a desktop shortcut, make an alias of `launch_mac.command` on Mac, or right-c
 Run the build script **on the computer that will use the result**:
 
 - **Mac:** Double-click `build_mac.command`. Open `dist/FilmReviewer.app`; you can move it to Applications or the Desktop.
-- **Windows:** Double-click `build_windows.bat`. Open `dist\FilmReviewer\FilmReviewer.exe`. Keep the whole `FilmReviewer` folder together; create a desktop shortcut to the `.exe` if you like.
+- **Windows:** Double-click `build_windows.bat`. After a successful build it opens `dist\FilmReviewer\FilmReviewer.exe` automatically. Keep the whole `FilmReviewer` folder together; create a desktop shortcut to the `.exe` if you like.
 
 The build scripts install PyInstaller and package Python with the app. A Mac build cannot create a Windows executable, and a Windows build cannot create a Mac app. The `dist` and `build` folders are local build output and are not part of the source repository.
 
