@@ -45,7 +45,9 @@ class MainWindow(QMainWindow):
         self.poster_data = b""
         self.current_review_id: str | None = None
         self.brushed_notes: str | None = None
+        self.ollama_version_active = False
         self.pending_notes: str | None = None
+        self.pending_previous_version: str | None = None
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.setInterval(350)
@@ -328,6 +330,7 @@ class MainWindow(QMainWindow):
 
     def _notes_changed(self) -> None:
         self.brushed_notes = None
+        self._set_ollama_retry(False)
         has_notes = bool(self.notes_input.toPlainText().strip())
         self.brush_button.setEnabled(has_notes and self.pending_notes is None)
         self.cleanup_button.setEnabled(has_notes and self.pending_notes is None)
@@ -340,6 +343,7 @@ class MainWindow(QMainWindow):
         if not original or self.pending_notes is not None:
             return
         self.pending_notes = original
+        self.pending_previous_version = self.brushed_notes if self.ollama_version_active else None
         self.brush_button.setEnabled(False)
         self.cleanup_button.setEnabled(False)
         self.brush_status.setText("Checking local Ollama models…")
@@ -355,7 +359,9 @@ class MainWindow(QMainWindow):
             self._ollama_failed("No Ollama model is installed. Run: ollama pull gemma3:4b")
             return
         saved = str(self.settings.value("ollama_model", ""))
-        if len(models) == 1:
+        if self.pending_previous_version is not None and saved in models:
+            model = saved
+        elif len(models) == 1:
             model = models[0]
         else:
             model, accepted = QInputDialog.getItem(
@@ -366,12 +372,16 @@ class MainWindow(QMainWindow):
                 self._ollama_failed("Ollama model selection cancelled.")
                 return
         self.settings.setValue("ollama_model", model)
-        self.brush_status.setText(f"Brushing up with {model}…")
-        self.ollama.rewrite(model, self.pending_notes)
+        self.brush_status.setText(
+            f"Trying another version with {model}…"
+            if self.pending_previous_version is not None else f"Brushing up with {model}…"
+        )
+        self.ollama.rewrite(model, self.pending_notes, self.pending_previous_version)
 
     def _ollama_rewrite_finished(self, rewritten: str, error: str) -> None:
         original = self.pending_notes
         self.pending_notes = None
+        self.pending_previous_version = None
         self.brush_button.setEnabled(bool(self.notes_input.toPlainText().strip()))
         self.cleanup_button.setEnabled(bool(self.notes_input.toPlainText().strip()))
         if original is None:
@@ -386,6 +396,7 @@ class MainWindow(QMainWindow):
 
     def _ollama_failed(self, message: str) -> None:
         self.pending_notes = None
+        self.pending_previous_version = None
         self.brush_button.setEnabled(bool(self.notes_input.toPlainText().strip()))
         self.cleanup_button.setEnabled(bool(self.notes_input.toPlainText().strip()))
         self.brush_status.setText(message)
@@ -400,15 +411,21 @@ class MainWindow(QMainWindow):
 
     def _apply_brushed_notes(self, text: str, source: str) -> None:
         self.brushed_notes = text
+        self._set_ollama_retry(source == "Ollama")
         self.original_button.show()
         self.brush_status.setText(f"Preview uses {source} text. Your original notes are unchanged.")
         self._update_preview()
 
     def _use_original_notes(self) -> None:
         self.brushed_notes = None
+        self._set_ollama_retry(False)
         self.original_button.hide()
         self.brush_status.setText("Showing your original notes.")
         self._update_preview()
+
+    def _set_ollama_retry(self, enabled: bool) -> None:
+        self.ollama_version_active = enabled
+        self.brush_button.setText("Try another version" if enabled else "Brush up with Ollama")
 
     def _formatted_review(self) -> str:
         metrics = [(row.name, row.value) for row in self.first_panel.metrics + self.second_panel.metrics]
@@ -486,7 +503,9 @@ class MainWindow(QMainWindow):
         self.poster_data = b""
         self.current_review_id = None
         self.pending_notes = None
+        self.pending_previous_version = None
         self.brushed_notes = None
+        self._set_ollama_retry(False)
         self.title_input.clear()
         self.director_input.clear()
         self.notes_input.clear()
@@ -518,12 +537,14 @@ class MainWindow(QMainWindow):
         self.selected_movie_id = review.movie_id
         self.selected_year = review.year
         self.pending_notes = None
+        self.pending_previous_version = None
         self.title_input.setText(review.title)
         self.director_input.setText(review.director)
         for row, value in zip(self.first_panel.metrics + self.second_panel.metrics, review.scores):
             row.slider.setValue(value)
         self.notes_input.setPlainText(review.notes)
         self.brushed_notes = review.brushed_notes
+        self._set_ollama_retry(review.brushed_notes is not None)
         self.original_button.setVisible(review.brushed_notes is not None)
         self.brush_status.setText("Showing saved brushed-up text. Original notes are unchanged." if review.brushed_notes is not None else "")
         try:

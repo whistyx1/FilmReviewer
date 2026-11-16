@@ -70,18 +70,28 @@ class OllamaClient(QObject):
 
         reply.finished.connect(lambda: self._finish(reply, done))
 
-    def rewrite(self, model: str, notes: str) -> None:
+    def rewrite(self, model: str, notes: str, previous_version: str | None = None) -> None:
         request = QNetworkRequest(QUrl(f"{API_ROOT}/chat"))
         request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
         request.setTransferTimeout(180_000)
+        messages = [
+            {"role": "system", "content": REWRITE_INSTRUCTION},
+            {"role": "user", "content": notes},
+        ]
+        if previous_version:
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Write another edit of my original review with noticeably different "
+                    "wording and sentence structure. Keep the same meaning and tone. "
+                    "Do not repeat this previous version:\n\n" + previous_version
+                ),
+            })
         payload = json.dumps({
             "model": model,
-            "messages": [
-                {"role": "system", "content": REWRITE_INSTRUCTION},
-                {"role": "user", "content": notes},
-            ],
+            "messages": messages,
             "stream": False,
-            "options": {"temperature": 0.2},
+            "options": {"temperature": 0.7 if previous_version else 0.2},
         }).encode("utf-8")
         reply = self.manager.post(request, payload)
 

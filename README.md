@@ -6,7 +6,7 @@ A desktop app for writing film reviews on macOS and Windows. Film Reviewer combi
 
 1. Search for a film with TMDB to fill in its title, year, director, and poster, or enter the details yourself.
 2. Rate eight aspects from 1 to 10. The **?** beside each metric explains what it means, and the calculation stays visible under the sliders.
-3. Write optional notes. **Basic cleanup** fixes spacing and simple punctuation locally; **Brush up with Ollama** rewrites them with a local AI model. Your original notes remain available.
+3. Write optional notes. **Basic cleanup** fixes spacing and simple punctuation locally; **Brush up with Ollama** rewrites them with a local AI model. After a rewrite, **Try another version** asks for different wording. Your original notes remain available.
 4. Check the review preview, then **Copy text**, **Copy image**, or **Save review**. Open **History** to search, reopen, update, or delete saved reviews.
 
 ## How the rating works
