@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from PyQt6.QtCore import QObject, QUrl, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
@@ -12,7 +13,21 @@ API_ROOT = "http://127.0.0.1:11434/api"
 REWRITE_INSTRUCTION = (
     "Edit this personal film review for grammar, clarity, and flow. Preserve the "
     "writer's meaning, opinion, tone, film names, and language. Do not invent facts, "
-    "add opinions, or change ratings. Return only the revised review text."
+    "add opinions, or change ratings. Return a JSON object with one field named "
+    "review containing only the revised review text. Do not add an introduction."
+)
+REVIEW_FORMAT = {
+    "type": "object",
+    "properties": {"review": {"type": "string"}},
+    "required": ["review"],
+    "additionalProperties": False,
+}
+INTRO = (
+    r"(?:sure[,!.]?\s*)?here(?: is|'s)\s+"
+    r"(?:(?:a|an|the|your)\s+)?"
+    r"(?:(?:new|another|revised|polished|improved|updated|alternative)\s+)?"
+    r"(?:version|review|draft|take)"
+    r"(?:\s+of\s+(?:your|the)\s+review)?"
 )
 
 
@@ -28,6 +43,20 @@ def parse_model_names(raw: bytes) -> list[str]:
 def parse_rewrite(raw: bytes) -> str:
     content = json.loads(raw)["message"]["content"]
     if not isinstance(content, str) or not content.strip():
+        raise ValueError("Ollama returned an empty review")
+    content = content.strip()
+    try:
+        structured = json.loads(content)
+    except ValueError:
+        structured = None
+    if isinstance(structured, dict) and isinstance(structured.get("review"), str):
+        content = structured["review"].strip()
+
+    content = re.sub(rf"^{INTRO}\s*:\s*", "", content, count=1, flags=re.IGNORECASE)
+    first_line, separator, remainder = content.partition("\n")
+    if separator and re.fullmatch(rf"{INTRO}\s*[.!:]?", first_line.strip(), re.IGNORECASE):
+        content = remainder.strip()
+    if not content.strip():
         raise ValueError("Ollama returned an empty review")
     return content.strip()
 
@@ -91,6 +120,7 @@ class OllamaClient(QObject):
             "model": model,
             "messages": messages,
             "stream": False,
+            "format": REVIEW_FORMAT,
             "options": {"temperature": 0.7 if previous_version else 0.2},
         }).encode("utf-8")
         reply = self.manager.post(request, payload)
