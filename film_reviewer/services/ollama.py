@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import sys
+from pathlib import Path
 
-from PyQt6.QtCore import QObject, QUrl, pyqtSignal
+from PyQt6.QtCore import QObject, QProcess, QUrl, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 
@@ -61,6 +65,22 @@ def parse_rewrite(raw: bytes) -> str:
     return content.strip()
 
 
+def find_ollama_executable() -> str | None:
+    candidates = [shutil.which("ollama")]
+    if sys.platform == "darwin":
+        candidates.extend((
+            "/Applications/Ollama.app/Contents/Resources/ollama",
+            str(Path.home() / "Applications/Ollama.app/Contents/Resources/ollama"),
+        ))
+    elif sys.platform == "win32":
+        for folder in (os.getenv("LOCALAPPDATA"), os.getenv("ProgramFiles")):
+            if folder:
+                candidates.append(str(Path(folder) / "Ollama" / "ollama.exe"))
+        if os.getenv("LOCALAPPDATA"):
+            candidates.append(str(Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Ollama" / "ollama.exe"))
+    return next((path for path in candidates if path and Path(path).is_file()), None)
+
+
 class OllamaClient(QObject):
     models_finished = pyqtSignal(object, str)
     rewrite_finished = pyqtSignal(str, str)
@@ -68,6 +88,17 @@ class OllamaClient(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.manager = QNetworkAccessManager(self)
+
+    def start_server(self) -> bool:
+        executable = find_ollama_executable()
+        if executable is None:
+            return False
+        process = QProcess()
+        process.setProgram(executable)
+        process.setArguments(["serve"])
+        process.setStandardOutputFile(QProcess.nullDevice())
+        process.setStandardErrorFile(QProcess.nullDevice())
+        return process.startDetached()
 
     def _finish(self, reply: QNetworkReply, callback) -> None:
         raw = bytes(reply.readAll())

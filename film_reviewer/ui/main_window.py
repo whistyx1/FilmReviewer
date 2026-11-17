@@ -7,7 +7,7 @@ import base64
 from datetime import datetime
 from uuid import uuid4
 
-from PyQt6.QtCore import QCoreApplication, QSettings, QTimer, Qt
+from PyQt6.QtCore import QCoreApplication, QElapsedTimer, QSettings, QTimer, Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QBoxLayout, QDialog, QFrame, QHBoxLayout, QInputDialog, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QScrollArea, QTextEdit, QPushButton, QVBoxLayout, QWidget
 
@@ -48,6 +48,11 @@ class MainWindow(QMainWindow):
         self.ollama_version_active = False
         self.pending_notes: str | None = None
         self.pending_previous_version: str | None = None
+        self.ollama_start_timer = QElapsedTimer()
+        self.ollama_retry_timer = QTimer(self)
+        self.ollama_retry_timer.setSingleShot(True)
+        self.ollama_retry_timer.setInterval(1_000)
+        self.ollama_retry_timer.timeout.connect(self._retry_ollama_models)
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.setInterval(350)
@@ -344,6 +349,8 @@ class MainWindow(QMainWindow):
             return
         self.pending_notes = original
         self.pending_previous_version = self.brushed_notes if self.ollama_version_active else None
+        self.ollama_retry_timer.stop()
+        self.ollama_start_timer.invalidate()
         self.brush_button.setEnabled(False)
         self.cleanup_button.setEnabled(False)
         self.brush_status.setText("Checking local Ollama models…")
@@ -353,10 +360,24 @@ class MainWindow(QMainWindow):
         if self.pending_notes is None:
             return
         if error:
-            self._ollama_failed("Start Ollama on this computer, then try again.")
+            if error.startswith("Invalid Ollama response:"):
+                self._ollama_failed(error)
+                return
+            if not self.ollama_start_timer.isValid():
+                if not self.ollama.start_server():
+                    self._ollama_failed("Could not start Ollama. Open the Ollama app, then try again.")
+                    return
+                self.ollama_start_timer.start()
+            if self.ollama_start_timer.elapsed() < 15_000:
+                self.brush_status.setText("Starting local Ollama…")
+                self.ollama_retry_timer.start()
+                return
+            self._ollama_failed("Ollama did not start in time. Open the Ollama app, then try again.")
             return
+        self.ollama_retry_timer.stop()
+        self.ollama_start_timer.invalidate()
         if not models:
-            self._ollama_failed("No Ollama model is installed. Run: ollama pull gemma3:4b")
+            self._ollama_failed("No Ollama model is installed. Run: ollama pull gemma3:1b")
             return
         saved = str(self.settings.value("ollama_model", ""))
         if self.pending_previous_version is not None and saved in models:
@@ -378,6 +399,10 @@ class MainWindow(QMainWindow):
         )
         self.ollama.rewrite(model, self.pending_notes, self.pending_previous_version)
 
+    def _retry_ollama_models(self) -> None:
+        if self.pending_notes is not None and self.ollama_start_timer.isValid():
+            self.ollama.list_models()
+
     def _ollama_rewrite_finished(self, rewritten: str, error: str) -> None:
         original = self.pending_notes
         self.pending_notes = None
@@ -397,6 +422,8 @@ class MainWindow(QMainWindow):
     def _ollama_failed(self, message: str) -> None:
         self.pending_notes = None
         self.pending_previous_version = None
+        self.ollama_retry_timer.stop()
+        self.ollama_start_timer.invalidate()
         self.brush_button.setEnabled(bool(self.notes_input.toPlainText().strip()))
         self.cleanup_button.setEnabled(bool(self.notes_input.toPlainText().strip()))
         self.brush_status.setText(message)
@@ -504,6 +531,8 @@ class MainWindow(QMainWindow):
         self.current_review_id = None
         self.pending_notes = None
         self.pending_previous_version = None
+        self.ollama_retry_timer.stop()
+        self.ollama_start_timer.invalidate()
         self.brushed_notes = None
         self._set_ollama_retry(False)
         self.title_input.clear()
@@ -538,6 +567,8 @@ class MainWindow(QMainWindow):
         self.selected_year = review.year
         self.pending_notes = None
         self.pending_previous_version = None
+        self.ollama_retry_timer.stop()
+        self.ollama_start_timer.invalidate()
         self.title_input.setText(review.title)
         self.director_input.setText(review.director)
         for row, value in zip(self.first_panel.metrics + self.second_panel.metrics, review.scores):

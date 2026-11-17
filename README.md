@@ -53,5 +53,5 @@ The build scripts install PyInstaller and package Python with the app. A Mac bui
 ## Optional services and saved data
 
 - **TMDB:** Click **Connect TMDB** in the app and paste your own API Read Access Token to search films and load posters. You only need to do this once per computer. Developers can also set `TMDB_READ_ACCESS_TOKEN` in the environment.
-- **Ollama:** Install and run Ollama on each computer where you want **Brush up with Ollama**. Download a model with `ollama pull gemma3:1b` (or another model). Review notes are sent to Ollama on `127.0.0.1:11434`; **Basic cleanup** works without it.
+- **Ollama:** Install Ollama on each computer where you want **Brush up with Ollama**. Download a model with `ollama pull gemma3:1b` (or another model). If its local server is stopped, Film Reviewer tries to start it when you brush up a review. Review notes are sent to Ollama on `127.0.0.1:11434`; **Basic cleanup** works without it.
 - **History and settings:** Click **Save review** to keep a review. History is stored as `reviews.json` in the system's application data directory, while the TMDB token and selected Ollama model use Qt settings. These stay on each computer separately; copying the project or app does not transfer them.
